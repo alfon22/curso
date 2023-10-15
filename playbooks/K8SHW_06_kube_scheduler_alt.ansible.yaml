@@ -1,0 +1,46 @@
+---
+- name: 06 Crea el certificado para el scheduler
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Genera el fichero kube-scheduler.key
+      ansible.builtin.shell:
+        cmd: openssl genrsa -out ./ssl/kube-scheduler.key 2048
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero kube-scheduler.key
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-scheduler.key
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero kube-scheduler.csr
+      ansible.builtin.shell:
+        cmd: openssl req -new -key ./ssl/kube-scheduler.key -subj "/CN=system:kube-scheduler/O=system:kube-scheduler" -out ./ssl/kube-scheduler.csr
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero kube-scheduler.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-scheduler.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero kube-scheduler.crt
+      ansible.builtin.shell:
+        cmd: openssl x509 -req -in ./ssl/kube-scheduler.csr -CA ./ssl/ca.crt -CAkey ./ssl/ca.key -CAcreateserial -out ./ssl/kube-scheduler.crt -days 1000
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-scheduler.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

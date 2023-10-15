@@ -1,0 +1,12 @@
+---
+- name: Prueba
+  hosts: master-1
+
+  vars:
+    lb: "{{  }}"
+
+  tasks:
+
+    - name: Prueba de debug
+      ansible.builtin.debug:
+       msg: "{{ lb }}"

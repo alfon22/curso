@@ -1,0 +1,31 @@
+    - name: Filtra los ficheros KEY a copiar
+      ansible.builtin.find:
+        paths: "/home/ubuntu/ssl"
+        recurse: false
+        patterns: "*.key"
+      register: files_to_copy
+
+    - name: Copia los ficheros KEY a la carpeta local
+      ansible.builtin.fetch:
+        src: "{{ item.path }}"
+        dest: ./temporal/
+        flat: true
+      with_items: "{{ files_to_copy.files }}"
+
+
+    - name: Delete existing dist folder
+      ansible.builtin.file:
+        path: "./temporal/admin.crt"
+        state: absent
+    - name: Delete existing dist folder
+      ansible.builtin.file:
+        path: "./temporal/admin.key"
+        state: absent
+    - name: Delete existing dist folder
+      ansible.builtin.file:
+        path: "./temporal/kube-proxy.crt"
+        state: absent
+    - name: Delete existing dist folder
+      ansible.builtin.file:
+        path: "./temporal/kube-proxy.key"
+        state: absent

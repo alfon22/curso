@@ -1,0 +1,47 @@
+---
+- name: 27 crea un kubeconfig para poder conectar desde el exterior del cluster con permisos de admin
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: true
+  become: true
+
+  vars:
+    loadbalancer: "192.168.56.30"
+
+  tasks:
+
+    - name: Genera el fichero kubeconfig paso1
+      ansible.builtin.command:
+        cmd: "kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=./ssl/ca.crt --embed-certs=true \
+              --server=https://{{ loadbalancer }}:6443"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera el fichero kubeconfig paso2
+      ansible.builtin.command:
+        cmd: "kubectl config set-credentials admin --client-certificate=./ssl/admin.crt --client-key=./ssl/admin.key"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera el fichero kubeconfig paso3
+      ansible.builtin.command:
+        cmd: "kubectl config set-context kubernetes-the-hard-way --cluster=kubernetes-the-hard-way --user=admin"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera el fichero kubeconfig paso4
+      ansible.builtin.command:
+        cmd: "kubectl config use-context kubernetes-the-hard-way"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      when: inventory_hostname == "master-1"
+
+    - name: Copia el fichero admin.kubeconfig sistema local
+      ansible.builtin.fetch:
+        src: "/home/ubuntu/admin.kubeconfig"
+        dest: ./
+        flat: true
+      when: inventory_hostname == "master-1"

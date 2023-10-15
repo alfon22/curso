@@ -1,0 +1,29 @@
+---
+- name: 19 Copia el fichero encryption-config.yaml a los dos controlplanes
+  hosts: controlplanes
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+
+  tasks:
+
+    - name: Copia el fichero yaml a la carpeta local
+      ansible.builtin.fetch:
+        src: "/home/ubuntu/encryption-config.yaml"
+        dest: ./temporal/
+        flat: true
+      when: inventory_hostname == "master-1"
+
+    - name: Create a directory if it does not exist
+      ansible.builtin.file:
+        path: /var/lib/kubernetes/
+        state: directory
+        mode: '0755'
+
+    - name: Copia el fichero yaml a las carpetas
+      ansible.builtin.copy:
+        src: "temporal/encryption-config.yaml"
+        dest: /var/lib/kubernetes/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

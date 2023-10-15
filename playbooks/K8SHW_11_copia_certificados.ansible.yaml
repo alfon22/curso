@@ -1,0 +1,50 @@
+---
+- name: 11 Copia los certificados a los nodos segun necesidad de cada uno
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+
+  vars:
+    listaficheros1: "{{ 'ca.crt ca.key kube-apiserver.key kube-apiserver.crt apiserver-kubelet-client.crt apiserver-kubelet-client.key \
+                  service-account.key service-account.crt etcd-server.key etcd-server.crt \
+                  kube-controller-manager.key kube-controller-manager.crt \
+                  kube-scheduler.key kube-scheduler.crt kube-proxy.crt kube-proxy.key' | split }}"
+
+    listaficheros2: "{{ 'ca.crt ca.key kube-apiserver.key kube-apiserver.crt apiserver-kubelet-client.crt apiserver-kubelet-client.key \
+                  service-account.key service-account.crt etcd-server.key etcd-server.crt \
+                  kube-controller-manager.key kube-controller-manager.crt \
+                  kube-scheduler.key kube-scheduler.crt' | split }}"
+
+
+    listaficheros3: "{{ 'ca.crt kube-proxy.crt kube-proxy.key' | split }}"
+
+  tasks:
+
+    - name: Copia los ficheros CRT y KEY a la carpeta local
+      ansible.builtin.fetch:
+        src: "/home/ubuntu/ssl/{{ item }}"
+        dest: ./temporal/
+        flat: true
+      when: inventory_hostname == "master-1"
+      with_items: "{{ listaficheros1 }}"
+
+    - name: Copia los ficheros CRT y KEY al master-2
+      ansible.builtin.copy:
+        src: "./temporal/{{ item }}"
+        dest: /home/ubuntu/ssl/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+      when: inventory_hostname == "master-2"
+      with_items: "{{ listaficheros2 }}"
+
+    - name: Copia los ficheros CRT y KEY a los workers
+      ansible.builtin.copy:
+        src: "./temporal/{{ item }}"
+        dest: /home/ubuntu/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+      when: inventory_hostname in groups['workers']
+      with_items: "{{ listaficheros3 }}"

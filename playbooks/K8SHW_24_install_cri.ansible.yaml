@@ -1,0 +1,100 @@
+---
+- name: 24 Instalacion de CRI, pirmero instala y configura CNI en los nodos workers
+  hosts: workers
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+
+  tasks:
+
+    - name: Crea un directorio para los ficheros si no existe
+      ansible.builtin.file:
+        path: /opt/cni/bin
+        state: directory
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Descarga el ejecutable containerd
+      ansible.builtin.get_url:
+        url: 'https://github.com/containerd/containerd/releases/download/v1.7.6/containerd-1.7.6-linux-amd64.tar.gz'
+        dest: /home/ubuntu/containerd-1.7.6-linux-amd64.tar.gz
+        owner: ubuntu
+        mode: '0740'
+      register: resultado
+      until: "resultado is not failed"
+      retries: 5
+      delay: 10
+
+    - name: Descarga el modulo cni
+      ansible.builtin.get_url:
+        url: 'https://github.com/containernetworking/plugins/releases/download/v1.3.0/cni-plugins-linux-amd64-v1.3.0.tgz'
+        dest: /home/ubuntu/cni-plugins-linux-amd64-v1.3.0.tgz
+        owner: ubuntu
+        mode: '0740'
+      register: resultado
+      until: "resultado is not failed"
+      retries: 5
+      delay: 10
+
+    - name: Descarga el modulo runc
+      ansible.builtin.get_url:
+        url: 'https://github.com/opencontainers/runc/releases/download/v1.1.9/runc.amd64'
+        dest: /usr/local/bin/runc
+        owner: root
+        mode: '0740'
+      register: resultado
+      until: "resultado is not failed"
+      retries: 5
+      delay: 10
+
+    - name: Descomprime el fichero y lo deja en la carpeta destino
+      ansible.builtin.unarchive:
+        src: /home/ubuntu/containerd-1.7.6-linux-amd64.tar.gz
+        dest: /usr/local
+        remote_src: true
+
+    - name: Descomprime el fichero y lo deja en la carpeta destino
+      ansible.builtin.unarchive:
+        src: /home/ubuntu/cni-plugins-linux-amd64-v1.3.0.tgz
+        dest: /opt/cni/bin
+        remote_src: true
+
+    - name: Crea el fichero de config containerd.service
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/containerd.service"
+        mode: '0640'
+        owner: root
+        content: |
+          [Unit]
+          Description=containerd container runtime
+          Documentation=https://containerd.io
+          After=network.target local-fs.target
+
+          [Service]
+          ExecStartPre=-/sbin/modprobe overlay
+          ExecStart=/usr/local/bin/containerd
+
+          Type=notify
+          Delegate=yes
+          KillMode=process
+          Restart=always
+          RestartSec=5
+          # Having non-zero Limit*s causes performance problems due to accounting overhead
+          # in the kernel. We recommend using cgroups to do container-local accounting.
+          LimitNPROC=infinity
+          LimitCORE=infinity
+          LimitNOFILE=infinity
+          # Comment TasksMax if your systemd version does not supports it.
+          # Only systemd 226 and above support this version.
+          TasksMax=infinity
+          OOMScoreAdjust=-999
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Inicia y habilita el servicio kube-apiserver kube-controller-manager kube-scheduler
+      ansible.builtin.service:
+        name: containerd
+        enabled: true
+        state: started

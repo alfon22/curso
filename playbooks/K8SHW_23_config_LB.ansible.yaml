@@ -1,0 +1,74 @@
+---
+- name: 23 Configura y lanza el servicio de balanceo de carga en el nodo
+  hosts: loadbalancer
+  remote_user: ubuntu
+  gather_facts: true
+  become: true
+
+  vars:
+    master_1: "192.168.56.11"
+    master_2: "192.168.56.12"
+    loadbalancer: "192.168.56.30"
+
+  tasks:
+
+    - name: Ansible apt to install multiple packages
+      register: updatesys
+      ansible.builtin.apt:
+        update_cache: true
+        name:
+          - haproxy
+        state: present
+
+    - name: Borra el fichero haproxy.cfg si existe
+      ansible.builtin.file:
+        path: /etc/haproxy/haproxy.cfg
+        state: absent
+
+    - name: Crea un directorio para los ficheros si no existe
+      ansible.builtin.file:
+        path: /etc/haproxy
+        state: directory
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Crea el fichero de config haproxy.cfg
+      ansible.builtin.copy:
+        dest: "/etc/haproxy/haproxy.cfg"
+        mode: '0640'
+        owner: root
+        content: |
+          global
+            daemon
+            log 127.0.0.1 local0
+            log 127.0.0.1 local1 notice
+            maxconn 4096
+            tune.ssl.default-dh-param 2048
+
+          defaults
+            log               global
+            retries           3
+            maxconn           2000
+            timeout connect   5s
+            timeout client    50s
+            timeout server    50s
+
+          frontend kubernetes
+              bind {{ loadbalancer }}:6443
+              option tcplog
+              mode tcp
+              default_backend kubernetes-master-nodes
+
+          backend kubernetes-master-nodes
+              mode tcp
+              balance roundrobin
+              option tcp-check
+              server master-1 {{ master_1 }}:6443 check fall 3 rise 2
+              server master-2 {{ master_2 }}:6443 check fall 3 rise 2
+
+    - name: Inicia y habilita el servicio haproxy
+      ansible.builtin.service:
+        name: haproxy
+        enabled: true
+        state: restarted

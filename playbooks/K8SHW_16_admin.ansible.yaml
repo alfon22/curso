@@ -1,0 +1,68 @@
+---
+- name: 16 Configura admin kubeconfig
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+
+  vars:
+    loadbalancer: "192.168.56.30"
+
+  tasks:
+
+    - name: Borra el fichero admin.kubeconfig
+      ansible.builtin.file:
+        path: "/home/ubuntu/admin.kubeconfig"
+        state: absent
+
+    - name: Primer comando con kubectl
+      ansible.builtin.command: "kubectl config set-cluster kubernetes-the-hard-way \
+                --certificate-authority=./ssl/ca.crt --embed-certs=true \
+                --server=https://127.0.0.1:6443 --kubeconfig=admin.kubeconfig"
+      args:
+        chdir: /home/ubuntu
+      register: result
+      changed_when: "'error' not in result.stdout"
+
+    - name: Print return information from the previous task
+      ansible.builtin.debug:
+        msg: "{{ result.stdout }}"
+
+    - name: Segundo comando con kubectl
+      ansible.builtin.command: "kubectl config set-credentials admin \
+                --client-certificate=./ssl/admin.crt --client-key=./ssl/admin.key \
+                --embed-certs=true --kubeconfig=admin.kubeconfig"
+      register: result
+      changed_when: "'error' not in result.stdout"
+
+    - name: Print return information from the previous task 2
+      ansible.builtin.debug:
+        msg: "{{ result.stdout }}"
+
+    - name: Tercer comando con kubectl
+      ansible.builtin.command: "kubectl config set-context default \
+                --cluster=kubernetes-the-hard-way --user=admin \
+                --kubeconfig=admin.kubeconfig"
+      register: result
+      changed_when: "'error' not in result.stdout"
+
+    - name: Print return information from the previous task 3
+      ansible.builtin.debug:
+        msg: "{{ result.stdout }}"
+
+    - name: Cuarto comando con kubectl
+      ansible.builtin.command: "kubectl config use-context default \
+                --kubeconfig=admin.kubeconfig"
+      register: result
+      changed_when: "'error' not in result.stdout"
+
+    - name: Print return information from the previous task 4
+      ansible.builtin.debug:
+        msg: "{{ result.stdout }}"
+
+    - name: Cambio propietario, grupo y permisos del fichero admin.pem
+      ansible.builtin.file:
+        path: /home/ubuntu/admin.kubeconfig
+        owner: ubuntu
+        group: ubuntu
+        mode: '0740'

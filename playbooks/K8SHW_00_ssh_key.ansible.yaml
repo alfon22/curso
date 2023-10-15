@@ -1,0 +1,17 @@
+---
+- name: Creación de un certificado en el master-1 y copia al resto de nodos
+  host: all
+  gather_facts: false
+
+  vars:
+    ssh_key_filename: id_rsa_ubuntu
+
+  tasks:
+
+    - name: generate SSH key "{{ssh_key_filename}}"
+      openssh_keypair:
+        path: "~/.ssh/{{ssh_key_filename}}"
+        type: rsa
+        size: 4096
+        state: present
+        force: no

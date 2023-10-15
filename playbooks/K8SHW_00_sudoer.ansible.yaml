@@ -1,0 +1,31 @@
+---
+- name: 00 Hace sudoer sin password al usuario ubuntu y le transfiere la key del host master de ansible
+  hosts: all
+  remote_user: vagrant
+  gather_facts: false
+  become: true
+
+  vars:
+    sudo_user: "ubuntu"
+
+  tasks:
+
+    - name: Crea o actualiza el usuario ubuntu
+      ansible.builtin.user:
+        name: "{{ sudo_user }}"
+        groups: sudo
+        append: true
+        state: present
+        createhome: true
+
+    - name: Hace los cambios en sudoer para permitir login sin password
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/80-ansible-sudo-user
+        content: "{{ sudo_user }} ALL=(ALL) NOPASSWD:ALL"
+        mode: "0440"
+
+    - name: Set authorized key taken from file
+      ansible.posix.authorized_key:
+        user: ubuntu
+        state: present
+        key: "{{ lookup('file', '/home/alf/.ssh/id_rsa_ubuntu.pub') }}"

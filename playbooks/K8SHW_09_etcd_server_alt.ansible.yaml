@@ -1,0 +1,75 @@
+---
+- name: 09 Crea el certificado para el servicio de ETC
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+
+  vars:
+    master_1: "192.168.56.11"
+    master_2: "192.168.56.12"
+
+  tasks:
+
+    - name: Borra el fichero openssl-etcd.cnf si existen
+      ansible.builtin.file:
+        path: /home/ubuntu/openssl-etcd.cnf
+        state: absent
+
+    - name: Crea el fichero de config con la contraseña
+      ansible.builtin.copy:
+        dest: "/home/ubuntu/openssl-etcd.cnf"
+        mode: '0640'
+        owner: ubuntu
+        content: |
+          [req]
+          req_extensions = v3_req
+          distinguished_name = req_distinguished_name
+          [req_distinguished_name]
+          [ v3_req ]
+          basicConstraints = CA:FALSE
+          keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+          subjectAltName = @alt_names
+          [alt_names]
+          IP.1 = {{ master_1 }}
+          IP.2 = {{ master_2 }}
+          IP.3 = 127.0.0.1
+
+    - name: Genera el fichero etcd-server.key
+      ansible.builtin.shell:
+        cmd: openssl genrsa -out ./ssl/etcd-server.key 2048
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero etcd-server.key
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/etcd-server.key
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el ficheo etcd-server.csr
+      ansible.builtin.shell:
+        cmd: openssl req -new -key ./ssl/etcd-server.key -subj "/CN=etcd-server/O=Kubernetes" -out ./ssl/etcd-server.csr -config openssl-etcd.cnf
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero etcd-server.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/etcd-server.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero etcd-server.crt
+      ansible.builtin.shell:
+        cmd: openssl x509 -req -in ./ssl/etcd-server.csr -CA ./ssl/ca.crt -CAkey ./ssl/ca.key -CAcreateserial -out ./ssl/etcd-server.crt -extensions v3_req -extfile openssl-etcd.cnf -days 1000
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/etcd-server.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

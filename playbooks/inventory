@@ -1,0 +1,29 @@
+master-1 ansible_host=192.168.56.11
+master-2 ansible_host=192.168.56.12
+worker-1 ansible_host=192.168.56.21
+worker-2 ansible_host=192.168.56.22
+loadbalancer ansible_host=192.168.56.30
+
+master-1 ansible_ssh_private_key_file=/home/alf/Vagrant/kubernetes/.vagrant/machines/master-1/virtualbox/private_key
+master-2 ansible_ssh_private_key_file=/home/alf/Vagrant/kubernetes/.vagrant/machines/master-2/virtualbox/private_key
+worker-1 ansible_ssh_private_key_file=/home/alf/Vagrant/kubernetes/.vagrant/machines/worker-1/virtualbox/private_key
+worker-2 ansible_ssh_private_key_file=/home/alf/Vagrant/kubernetes/.vagrant/machines/worker-2/virtualbox/private_key
+loadbalancer ansible_ssh_private_key_file=/home/alf/Vagrant/kubernetes/.vagrant/machines/loadbalancer/virtualbox/private_key
+
+
+[cluster]
+master-1
+master-2
+worker-1
+worker-2
+
+[controlplanes]
+master-1
+master-2
+
+[workers]
+worker-1
+worker-2
+
+[loadbalancers]
+loadbalancer

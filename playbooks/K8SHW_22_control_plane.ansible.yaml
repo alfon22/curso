@@ -1,0 +1,222 @@
+---
+- name: 22 Descarga los modulos de Kubernetes los configura y los lanza para poner en marcha los control plane
+  hosts: controlplanes
+  remote_user: ubuntu
+  gather_facts: true
+  become: true
+
+  vars:
+    listaficheros: "{{ 'kube-apiserver kube-controller-manager kube-scheduler kubectl' | split }}"
+    listaficheros1: "{{ 'kube-apiserver.key kube-apiserver.crt service-account.key service-account.crt apiserver-kubelet-client.key \
+                    apiserver-kubelet-client.crt etcd-server.key etcd-server.crt kube-scheduler.key kube-scheduler.crt \
+                    kube-controller-manager.key kube-controller-manager.crt ca.crt ca.key' | split }}"
+    listaficheros2: "{{ 'kube-apiserver.service kube-controller-manager.service kube-scheduler.service'| split }}"
+    listado_servicios: "{{ 'kube-apiserver kube-controller-manager kube-scheduler' | split }}"
+    url: "https://dl.k8s.io/v1.28.2/bin/linux/amd64/"
+    master_1: "192.168.56.11"
+    master_2: "192.168.56.12"
+    service_cidr: "172.16.0.0/16"
+    pod_cidr: "172.24.0.0/16"
+    loadbalancer: "192.168.56.30"
+
+
+  tasks:
+
+    - name: Revisa que la carpeta destino no existen los ficheros ya
+      ansible.builtin.file:
+        path: /home/ubuntu/{{ item }}
+        state: absent
+      with_items: "{{ listaficheros }}"
+
+    - name: Revisa que la carpeta destino no existen los ficheros ya
+      ansible.builtin.file:
+        path: /home/ubuntu/{{ item }}
+        state: absent
+      with_items: "{{ listaficheros2 }}"
+
+    - name: Descarga los modulos
+      ansible.builtin.get_url:
+        url: '{{ url }}{{ item }}'
+        dest: /home/ubuntu/{{ item }}
+        mode: '0740'
+      with_items: "{{ listaficheros }}"
+
+    - name: Cambio propietario, grupo y permisos de los ficheros descargados
+      ansible.builtin.file:
+        path: /home/ubuntu/{{ item }}
+        owner: ubuntu
+        group: ubuntu
+        mode: '0740'
+      with_items: "{{ listaficheros }}"
+
+    - name: Mueve los ejecutables bajados a la carpeta en el path
+      ansible.builtin.copy:
+        src: "/home/ubuntu/{{ item }}"
+        dest: /usr/local/bin/
+        owner: root
+        group: root
+        mode: '0700'
+        remote_src: true
+      with_items: "{{ listaficheros }}"
+
+    - name: Mueve los certificados a la carpeta en el path
+      ansible.builtin.copy:
+        src: "/home/ubuntu/ssl/{{ item }}"
+        dest: /var/lib/kubernetes/pki/
+        owner: root
+        group: root
+        mode: '0600'
+        remote_src: true
+      with_items: "{{ listaficheros1 }}"
+
+# Desde aquí empiezo a crear los ficheros de configuración
+
+    - name: Borra el fichero kube-apiserver.service
+      ansible.builtin.file:
+        path: /etc/systemd/system/kube-apiserver.service
+        state: absent
+
+    - name: Extrae la ip en curso y la asigna a una variable
+      ansible.builtin.shell:
+        cmd: ip addr show enp0s8 | grep "inet " | awk '{print $2}' | cut -d / -f 1
+        # executable: /bin/bash
+      register: internal_ip
+
+    - name: Test hosts list
+      ansible.builtin.debug:
+        msg: "{{ internal_ip.stdout }}"
+
+    - name: Crea el fichero de config kube-apiserver.service
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/kube-apiserver.service"
+        mode: '0640'
+        owner: root
+        content: |
+          [Unit]
+          Description=Kubernetes API Server
+          Documentation=https://github.com/kubernetes/kubernetes
+
+          [Service]
+          ExecStart=/usr/local/bin/kube-apiserver \
+            --advertise-address={{ internal_ip.stdout }} \
+            --allow-privileged=true \
+            --apiserver-count=2 \
+            --audit-log-maxage=30 \
+            --audit-log-maxbackup=3 \
+            --audit-log-maxsize=100 \
+            --audit-log-path=/var/log/audit.log \
+            --authorization-mode=Node,RBAC \
+            --bind-address=0.0.0.0 \
+            --client-ca-file=/var/lib/kubernetes/pki/ca.crt \
+            --enable-admission-plugins=NodeRestriction,ServiceAccount \
+            --enable-bootstrap-token-auth=true \
+            --etcd-cafile=/var/lib/kubernetes/pki/ca.crt \
+            --etcd-certfile=/var/lib/kubernetes/pki/etcd-server.crt \
+            --etcd-keyfile=/var/lib/kubernetes/pki/etcd-server.key \
+            --etcd-servers=https://{{ master_1 }}:2379,https://{{ master_2 }}:2379 \
+            --event-ttl=1h \
+            --encryption-provider-config=/var/lib/kubernetes/encryption-config.yaml \
+            --kubelet-certificate-authority=/var/lib/kubernetes/pki/ca.crt \
+            --kubelet-client-certificate=/var/lib/kubernetes/pki/apiserver-kubelet-client.crt \
+            --kubelet-client-key=/var/lib/kubernetes/pki/apiserver-kubelet-client.key \
+            --runtime-config=api/all=true \
+            --service-account-key-file=/var/lib/kubernetes/pki/service-account.crt \
+            --service-account-signing-key-file=/var/lib/kubernetes/pki/service-account.key \
+            --service-account-issuer=https://{{ loadbalancer }}:6443 \
+            --service-cluster-ip-range={{ service_cidr }} \
+            --service-node-port-range=30000-32767 \
+            --tls-cert-file=/var/lib/kubernetes/pki/kube-apiserver.crt \
+            --tls-private-key-file=/var/lib/kubernetes/pki/kube-apiserver.key \
+            --v=2
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Mueve kube-controller-manager.kubeconfig a su path
+      ansible.builtin.copy:
+        src: "/home/ubuntu/kube-controller-manager.kubeconfig"
+        dest: /var/lib/kubernetes/
+        owner: root
+        group: root
+        mode: '0600'
+        remote_src: true
+
+    - name: Crea el fichero de config kube-controller-manager.service
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/kube-controller-manager.service"
+        mode: '0600'
+        owner: root
+        content: |
+          [Unit]
+          Description=Kubernetes Controller Manager
+          Documentation=https://github.com/kubernetes/kubernetes
+
+          [Service]
+          ExecStart=/usr/local/bin/kube-controller-manager \
+            --allocate-node-cidrs=true \
+            --authentication-kubeconfig=/var/lib/kubernetes/kube-controller-manager.kubeconfig \
+            --authorization-kubeconfig=/var/lib/kubernetes/kube-controller-manager.kubeconfig \
+            --bind-address=127.0.0.1 \
+            --client-ca-file=/var/lib/kubernetes/pki/ca.crt \
+            --cluster-cidr={{ pod_cidr }} \
+            --cluster-name=kubernetes \
+            --cluster-signing-cert-file=/var/lib/kubernetes/pki/ca.crt \
+            --cluster-signing-key-file=/var/lib/kubernetes/pki/ca.key \
+            --controllers=*,bootstrapsigner,tokencleaner \
+            --kubeconfig=/var/lib/kubernetes/kube-controller-manager.kubeconfig \
+            --leader-elect=true \
+            --node-cidr-mask-size=24 \
+            --requestheader-client-ca-file=/var/lib/kubernetes/pki/ca.crt \
+            --root-ca-file=/var/lib/kubernetes/pki/ca.crt \
+            --service-account-private-key-file=/var/lib/kubernetes/pki/service-account.key \
+            --service-cluster-ip-range={{ service_cidr }} \
+            --use-service-account-credentials=true \
+            --v=2
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Mueve kube-scheduler.kubeconfig a su path
+      ansible.builtin.copy:
+        src: "/home/ubuntu/kube-scheduler.kubeconfig"
+        dest: /var/lib/kubernetes/
+        owner: root
+        group: root
+        mode: '0600'
+        remote_src: true
+
+    - name: Crea el fichero de config kube-scheduler.service
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/kube-scheduler.service"
+        mode: '0600'
+        owner: root
+        content: |
+          [Unit]
+          Description=Kubernetes Scheduler
+          Documentation=https://github.com/kubernetes/kubernetes
+
+          [Service]
+          ExecStart=/usr/local/bin/kube-scheduler \
+            --kubeconfig=/var/lib/kubernetes/kube-scheduler.kubeconfig \
+            --leader-elect=true \
+            --v=2
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Inicia y habilita el servicio kube-apiserver kube-controller-manager kube-scheduler
+      ansible.builtin.service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      with_items: "{{ listado_servicios }}"
+
+    - name: Just force systemd to re-execute itself (2.8 and above)
+      ansible.builtin.systemd_service:
+        daemon_reexec: true

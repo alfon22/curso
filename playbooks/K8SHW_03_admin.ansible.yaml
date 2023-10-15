@@ -1,0 +1,52 @@
+---
+- name: Crea el certificado para el administrador
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Genera una Key privada para clientes y servidores de 2048 bits con OpenSSL
+      community.crypto.openssl_privatekey:
+        path: /home/ubuntu/ssl/admin.pem
+        size: 2048
+    - name: Cambio propietario, grupo y permisos del fichero admin.pem
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/admin.pem
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+    - name: Copy file with owner and permissions
+      ansible.builtin.copy:
+        src: /home/ubuntu/ssl/admin.pem
+        dest: /home/ubuntu/ssl/admin.key
+        remote_src: true
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera una solicitud de firma de certificado con OpenSSL
+      community.crypto.openssl_csr:
+        path: /home/ubuntu/ssl/admin.csr
+        privatekey_path: /home/ubuntu/ssl/admin.pem
+        subject: 'CN=admin, O=system:masters'
+    - name: Cambio propietario, grupo y permisos del fichero admin.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/admin.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera un certificado CRT con CA generada
+      community.crypto.x509_certificate:
+        path: /home/ubuntu/ssl/admin.crt
+        csr_path: /home/ubuntu/ssl/admin.csr
+        ownca_path: /home/ubuntu/ssl/ca.crt
+        ownca_privatekey_path: /home/ubuntu/ssl/ca.pem
+        provider: ownca
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/admin.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

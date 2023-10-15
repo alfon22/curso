@@ -1,0 +1,46 @@
+---
+- name: 03 Crea el certificado para el administrador
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Genera el fichero admin.key
+      ansible.builtin.shell:
+        cmd: openssl genrsa -out ./ssl/admin.key 2048
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero admin.key
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/admin.key
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero admin.csr
+      ansible.builtin.shell:
+        cmd: openssl req -new -key ./ssl/admin.key -subj "/CN=admin/O=system:masters" -out ./ssl/admin.csr
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero admin.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/admin.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero admin.crt
+      ansible.builtin.shell:
+        cmd: openssl x509 -req -in ./ssl/admin.csr -CA ./ssl/ca.crt -CAkey ./ssl/ca.key -CAcreateserial -out ./ssl/admin.crt -days 1000
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/admin.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

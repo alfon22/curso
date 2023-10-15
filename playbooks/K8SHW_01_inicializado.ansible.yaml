@@ -1,0 +1,66 @@
+---
+- name: 01 Realiza la configuracion del los nodos del cluster
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Configura la zona horararia
+      community.general.timezone:
+        name: Europe/Madrid
+
+    - name: Realiza el update de todos los paquetes
+      register: updatesys
+      ansible.builtin.apt:
+        name: "*"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Ansible apt to install multiple packages
+      register: updatesys
+      ansible.builtin.apt:
+        update_cache: true
+        name:
+          - open-vm-tools
+          - net-tools
+          - iputils-ping
+          - nano
+          - locales
+          - ntp
+          - rsync
+          - iptables
+          - bsdmainutils
+        state: present
+
+    - name: Verifica que un locale existe
+      community.general.locale_gen:
+        name: es_ES.UTF-8
+        state: present
+
+    - name: Pone el sistema en modo local
+      ansible.builtin.command: localectl set-locale LANG=es_ES.UTF-8 LC_TIME=es_ES.UTF-8 LC_CTYPE=es_ES.UTF-8
+      register: my_output # <- Registers the command output.
+      changed_when: my_output.rc != 0 # <- Uses the return code to define when the task has changed.
+
+
+    - name: Habilita el servicio NTP.
+      ansible.builtin.service:
+        name: ntp
+        state: started
+        enabled: true
+
+    - name: Disable SWAP en fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+        replace: '# \1'
+
+    - name: Disable SWAP en ejecucion
+      ansible.builtin.command: |
+        swapoff -a
+
+    - name: Carga un modulo de red en todos los nodos
+      community.general.modprobe:
+        name: ip_conntrack
+        state: present

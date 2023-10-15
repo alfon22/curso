@@ -1,0 +1,130 @@
+- name: Hace de playbook principal llamando al resto
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+- name: Copia las key de ssh y hace que el usuario ubuntu sea sudoer sin password
+  ansible.builtin.import_playbook: K8SHW_00_sudoer.ansible.yaml
+
+- name: Inicializa cada uno de los X nodos actualizando paquetes y configurando la horararia
+  ansible.builtin.import_playbook: K8SHW_01_inicializado.ansible.yaml
+
+- name: Importa un playbook 02
+  # ansible.builtin.import_playbook: K8SHW_02_ca_ssl.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_02_ca_ssl_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 03
+  # ansible.builtin.import_playbook: K8SHW_03_admin.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_03_admin_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 04
+  # ansible.builtin.import_playbook: K8SHW_04_kube_control_manager.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_04_kube_control_manager_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 05
+  # ansible.builtin.import_playbook: K8SHW_05_kube_proxy.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_05_kube_proxy_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 06
+  # ansible.builtin.import_playbook: K8SHW_06_kube_scheduler.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_06_kube_scheduler_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 07
+  # ansible.builtin.import_playbook: K8SHW_07_API_server.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_07_API_server_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 08
+  # ansible.builtin.import_playbook: K8SHW_08_apiserver_kubelet_client.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_08_apiserver_kubelet_client_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 09
+  # ansible.builtin.import_playbook: K8SHW_09_etcd_server.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_09_etcd_server_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 10
+  # ansible.builtin.import_playbook: K8SHW_10_service_account.ansible.yaml
+  ansible.builtin.import_playbook: K8SHW_10_service_account_alt.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 11
+  ansible.builtin.import_playbook: K8SHW_11_copia_certificados.ansible.yaml
+
+- name: Importa un playbook 12
+  ansible.builtin.import_playbook: K8SHW_12_descarga_kubectl.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 13
+  ansible.builtin.import_playbook: K8SHW_13_kubectl_config.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 14
+  ansible.builtin.import_playbook: K8SHW_14_kube_controller_manager.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 15
+  ansible.builtin.import_playbook: K8SHW_15_kube_scheduler.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 16
+  ansible.builtin.import_playbook: K8SHW_16_admin.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 17
+  ansible.builtin.import_playbook: K8SHW_17_copia_kubeconfigs.ansible.yaml
+  # when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 18
+  ansible.builtin.import_playbook: K8SHW_18_data_encryption.ansible.yaml
+  when: inventory_hostname == "master-1"
+
+- name: Importa un playbook 19
+  ansible.builtin.import_playbook: K8SHW_19_copia_encryption_config.ansible.yaml
+  when: inventory_hostname in groups['controlplanes']
+
+- name: Importa un playbook 20
+  ansible.builtin.import_playbook: K8SHW_20_downloadETCD.ansible.yaml
+  when: inventory_hostname in groups['controlplanes']
+
+- name: Importa un playbook 21
+  ansible.builtin.import_playbook: K8SHW_21_config_start_ETCD.ansible.yaml
+  when: inventory_hostname in groups['controlplanes']
+
+- name: Importa un playbook 22
+  ansible.builtin.import_playbook: K8SHW_22_control_plane.ansible.yaml
+  when: inventory_hostname in groups['controlplanes']
+
+- name: Importa un playbook 23
+  ansible.builtin.import_playbook: K8SHW_23_config_LB.ansible.yaml
+  when: inventory_hostname == "loadbalancer"
+
+- name: Importa un playbook 24
+  ansible.builtin.import_playbook: K8SHW_24_install_cri.ansible.yaml
+  when: inventory_hostname in groups['workers']
+
+- name: Importa un playbook 25
+  ansible.builtin.import_playbook: K8SHW_25_kubelet_kubeproxy.ansible.yaml
+
+# - name: Importa un playbook 26
+#  ansible.builtin.import_playbook: K8SHW_26_TLS_Bootstrapping_ansible.yaml
+
+- name: Importa un playbook 27
+  ansible.builtin.import_playbook: K8SHW_27_kubectl_admin.ansible.yaml
+
+- name: Importa un playbook 28
+  ansible.builtin.import_playbook: K8SHW_28_CNI_pods.ansible.yaml
+
+- name: Importa un playbook 29
+  ansible.builtin.import_playbook: K8SHW_29_RBAC_Kube-apiserver.ansible.yaml
+
+- name: Importa un playbook 30
+  ansible.builtin.import_playbook: K8SHW_30_CoreDNS.ansible.yaml

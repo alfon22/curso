@@ -1,0 +1,46 @@
+---
+- name: 04 Crea el certificado para el control manager
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Genera el fichero kube-controller-manager.key
+      ansible.builtin.shell:
+        cmd: openssl genrsa -out ./ssl/kube-controller-manager.key 2048
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero kube-controller-manager.key
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-controller-manager.key
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero kube-controller-manager.csr
+      ansible.builtin.shell:
+        cmd: openssl req -new -key ./ssl/kube-controller-manager.key -subj "/CN=system:kube-controller-manager/O=system:kube-controller-manager" -out ./ssl/kube-controller-manager.csr
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero kube-controller-manager.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-controller-manager.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero kube-controller-manager.crt
+      ansible.builtin.shell:
+        cmd: openssl x509 -req -in ./ssl/kube-controller-manager.csr -CA ./ssl/ca.crt -CAkey ./ssl/ca.key -CAcreateserial -out ./ssl/kube-controller-manager.crt -days 1000
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-controller-manager.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

@@ -1,0 +1,352 @@
+---
+- name: 25 Instalacion de CRI, instalacion de kubelet y kubeproxy en workers
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: true
+  become: true
+
+  vars:
+    worker_1: "192.168.56.21"
+    worker_2: "192.168.56.22"
+    cluster_dns: "172.16.0.10"
+    pod_cidr: "172.24.0.0/16"
+    loadbalancer: "192.168.56.30"
+    listaficheros1: "{{ 'ssl/worker-1.crt ssl/worker-1.key  worker-1.kubeconfig ssl/worker-2.crt ssl/worker-2.key  worker-2.kubeconfig' | split }}"
+    listaficheros2: "{{ 'ca.crt worker-1.crt worker-1.key worker-1.kubeconfig' | split }}"
+    listaficheros3: "{{ 'ca.crt worker-2.crt worker-2.key worker-2.kubeconfig' | split }}"
+    listado3: "{{ 'kubectl kube-proxy kubelet' | split }}"
+    listado4: "{{ 'worker-1.key worker-1.crt worker-1.kubeconfig ca.crt kube-proxy.crt kube-proxy.key' | split }}"
+    listado5: "{{ 'worker-2.key worker-2.crt worker-2.kubeconfig ca.crt kube-proxy.crt kube-proxy.key' | split }}"
+    listado6: "{{ 'worker-1.kubeconfig worker-2.kubeconfig' | split }}"
+    listado7: "{{ '192.168.56.21 192.168.56.22' | split }}"
+    listado8: "{{ 'worker-1 worker-2' | split }}"
+    directorios: "{{ '/var/lib/kubelet /var/lib/kube-proxy /var/lib/kubernetes/pki \
+                    /var/run/kubernetes /var/lib/kubelet/' | split }}"
+
+
+  tasks:
+
+    - name: Borra el fichero openssl-worker-1.cnf si existen
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/openssl-{{ item }}.cnf
+        state: absent
+      when: inventory_hostname == "master-1"
+      with_items: "{{ listado8 }}"
+
+    - name: Crea el fichero openssl-worker-1.cnf para su certificado
+      ansible.builtin.copy:
+        dest: "/home/ubuntu/ssl/openssl-worker-1.cnf"
+        mode: '0640'
+        owner: root
+        content: |
+          [req]
+          req_extensions = v3_req
+          distinguished_name = req_distinguished_name
+          [req_distinguished_name]
+          [ v3_req ]
+          basicConstraints = CA:FALSE
+          keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+          subjectAltName = @alt_names
+          [alt_names]
+          DNS.1 = worker-1
+          IP.1 = {{ worker_1 }}
+      when: inventory_hostname == "master-1"
+
+    - name: Crea el fichero openssl-worker-2.cnf para su certificado
+      ansible.builtin.copy:
+        dest: "/home/ubuntu/ssl/openssl-worker-2.cnf"
+        mode: '0640'
+        owner: root
+        content: |
+          [req]
+          req_extensions = v3_req
+          distinguished_name = req_distinguished_name
+          [req_distinguished_name]
+          [ v3_req ]
+          basicConstraints = CA:FALSE
+          keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+          subjectAltName = @alt_names
+          [alt_names]
+          DNS.1 = worker-2
+          IP.1 = {{ worker_2 }}
+      when: inventory_hostname == "master-1"
+
+    - name: Genera el fichero worker-X.key
+      ansible.builtin.command:
+        cmd: openssl genrsa -out ./ssl/{{ item }}.key 2048
+      register: result
+      changed_when: "'error' not in result.stdout"
+      with_items: "{{ listado8 }}"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera el fichero worker-X.csr
+      ansible.builtin.command:
+        cmd: openssl req -new -key ./ssl/{{ item }}.key -subj "/CN=system:node:{{ item }}/O=system:nodes" -out ./ssl/{{ item }}.csr -config ./ssl/openssl-{{ item }}.cnf
+      register: result
+      changed_when: "'error' not in result.stdout"
+      with_items: "{{ listado8 }}"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera el fichero worker-X.crt
+      ansible.builtin.command:
+        cmd: "openssl x509 -req -in ./ssl/{{ item }}.csr -CA ./ssl/ca.crt -CAkey ./ssl/ca.key -CAcreateserial \
+              -out ./ssl/{{ item }}.crt -extensions v3_req -extfile ./ssl/openssl-{{ item }}.cnf -days 1000"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      with_items: "{{ listado8 }}"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera kubeconfig para el nodoX
+      ansible.builtin.command:
+        cmd: "kubectl config set-cluster kubernetes-the-hard-way --certificate-authority=/var/lib/kubernetes/pki/ca.crt \
+              --server=https://{{ loadbalancer }}:6443 --kubeconfig={{ item }}.kubeconfig"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      with_items: "{{ listado8 }}"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera kubeconfig para el nodoX paso2
+      ansible.builtin.command:
+        cmd: "kubectl config set-credentials system:node:{{ item }} --client-certificate=/var/lib/kubernetes/pki/{{ item }}.crt \
+              --client-key=/var/lib/kubernetes/pki/{{ item }}.key --kubeconfig={{ item }}.kubeconfig"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      with_items: "{{ listado8 }}"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera kubeconfig para el nodo1 paso3
+      ansible.builtin.command:
+        cmd: "kubectl config set-context default --cluster=kubernetes-the-hard-way --user=system:node:{{ item }} \
+              --kubeconfig={{ item }}.kubeconfig"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      with_items: "{{ listado8 }}"
+      when: inventory_hostname == "master-1"
+
+    - name: Genera kubeconfig para el nodo1 paso4
+      ansible.builtin.command:
+        cmd: "kubectl config use-context default --kubeconfig={{ item }}.kubeconfig"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      with_items: "{{ listado8 }}"
+      when: inventory_hostname == "master-1"
+
+
+    - name: Copia los ficheros al equipo local
+      ansible.builtin.fetch:
+        src: "/home/ubuntu/{{ item }}"
+        dest: ./temporal/
+        flat: true
+      when: inventory_hostname == "master-1"
+      with_items: "{{ listaficheros1 }}"
+
+    - name: Copia los ficheros del equipo local al worker-1
+      ansible.builtin.copy:
+        src: "./temporal/{{ item }}"
+        dest: /home/ubuntu/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+      when: inventory_hostname == "worker-1"
+      with_items: "{{ listaficheros2 }}"
+
+    - name: Copia los ficheros del equipo local al worker-2
+      ansible.builtin.copy:
+        src: "./temporal/{{ item }}"
+        dest: /home/ubuntu/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+      when: inventory_hostname == "worker-2"
+      with_items: "{{ listaficheros3 }}"
+
+    - name: Descarga los modulos kubelet kube-proxy kubelet
+      ansible.builtin.get_url:
+        url: 'https://dl.k8s.io/release/v1.28.2/bin/linux/amd64/{{ item }}'
+        dest: /home/ubuntu/{{ item }}
+        owner: root
+        mode: '0740'
+      when: inventory_hostname in groups['workers']
+      with_items: "{{ listado3 }}"
+      register: resultado
+      until: "resultado is not failed"
+      retries: 5
+      delay: 10
+
+    - name: Crea los directorio para los ficheros si no existe
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0600'
+      when: inventory_hostname in groups['workers']
+      with_items: "{{ directorios }}"
+
+    - name: Mueve los ficheros kubelet kube-proxy kubelet al path
+      ansible.builtin.copy:
+        src: "/home/ubuntu/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0740'
+      when: inventory_hostname in groups['workers']
+      with_items: "{{ listado3 }}"
+
+    - name: Mueve los ficheros worker-1.key worker-1.crt worker-1.kubeconfig ca.crt kube-proxy.crt y kube-proxy.key
+      ansible.builtin.copy:
+        src: "/home/ubuntu/{{ item }}"
+        dest: "/var/lib/kubernetes/pki/{{ item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0740'
+      when: inventory_hostname == "worker-1"
+      with_items: "{{ listado4 }}"
+
+    - name: Mueve los ficheros worker-2.key worker-2.crt worker-2.kubeconfig ca.crt kube-proxy.crt y kube-proxy.key
+      ansible.builtin.copy:
+        src: "/home/ubuntu/{{ item }}"
+        dest: "/var/lib/kubernetes/pki/{{ item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0740'
+      when: inventory_hostname == "worker-2"
+      with_items: "{{ listado5 }}"
+
+    - name: Mueve los ficheros worker-1.kubeconfig a la carpeta correcta  y lo renombra
+      ansible.builtin.copy:
+        src: "/home/ubuntu/worker-1.kubeconfig"
+        dest: "/var/lib/kubelet/kubelet.kubeconfig"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0600'
+      when: inventory_hostname == "worker-1"
+
+    - name: Mueve los ficheros worker-2.kubeconfig a la carpeta correcta y lo renombra
+      ansible.builtin.copy:
+        src: "/home/ubuntu/worker-2.kubeconfig"
+        dest: "/var/lib/kubelet/kubelet.kubeconfig"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0600'
+      when: inventory_hostname == "worker-2"
+
+    - name: Crea el fichero kubelet-config.yaml
+      ansible.builtin.copy:
+        dest: "/var/lib/kubelet/kubelet-config.yaml"
+        mode: '0600'
+        owner: root
+        content: |
+          kind: KubeletConfiguration
+          apiVersion: kubelet.config.k8s.io/v1beta1
+          authentication:
+            anonymous:
+              enabled: false
+            webhook:
+              enabled: true
+            x509:
+              clientCAFile: /var/lib/kubernetes/pki/ca.crt
+          authorization:
+            mode: Webhook
+          clusterDomain: cluster.local
+          clusterDNS:
+            - {{ cluster_dns }}
+          resolvConf: /run/systemd/resolve/resolv.conf
+          runtimeRequestTimeout: "15m"
+          tlsCertFile: /var/lib/kubernetes/pki/{{ ansible_hostname }}.crt
+          tlsPrivateKeyFile: /var/lib/kubernetes/pki/{{ ansible_hostname }}.key
+          registerNode: true
+      when: inventory_hostname in groups['workers']
+
+    - name: Crea el fichero kubelet.service
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/kubelet.service"
+        mode: '0600'
+        owner: root
+        content: |
+          [Unit]
+          Description=Kubernetes Kubelet
+          Documentation=https://github.com/kubernetes/kubernetes
+          After=containerd.service
+          Requires=containerd.service
+
+          [Service]
+          ExecStart=/usr/local/bin/kubelet \
+            --config=/var/lib/kubelet/kubelet-config.yaml \
+            --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock \
+            --kubeconfig=/var/lib/kubelet/kubelet.kubeconfig \
+            --v=2
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+      when: inventory_hostname in groups['workers']
+
+    - name: Mueve el fichero kube-proxy.kubeconfig a la carpeta destino
+      ansible.builtin.copy:
+        src: "/home/ubuntu/kube-proxy.kubeconfig"
+        dest: /var/lib/kube-proxy/
+        owner: root
+        group: root
+        mode: '0700'
+        remote_src: true
+      when: inventory_hostname in groups['workers']
+
+    - name: Crea el fichero kube-proxy-config.yaml
+      ansible.builtin.copy:
+        dest: "/var/lib/kube-proxy/kube-proxy-config.yaml"
+        mode: '0600'
+        owner: root
+        content: |
+          kind: KubeProxyConfiguration
+          apiVersion: kubeproxy.config.k8s.io/v1alpha1
+          clientConnection:
+            kubeconfig: "/var/lib/kube-proxy/kube-proxy.kubeconfig"
+          mode: "iptables"
+          clusterCIDR: {{ pod_cidr }}
+      when: inventory_hostname in groups['workers']
+
+    - name: Crea el fichero kube-proxy.service
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/kube-proxy.service"
+        mode: '0600'
+        owner: root
+        content: |
+          [Unit]
+          Description=Kubernetes Kube Proxy
+          Documentation=https://github.com/kubernetes/kubernetes
+
+          [Service]
+          ExecStart=/usr/local/bin/kube-proxy \
+            --config=/var/lib/kube-proxy/kube-proxy-config.yaml
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+      when: inventory_hostname in groups['workers']
+
+    - name: Inicia y habilita el servicio kubelet
+      ansible.builtin.service:
+        name: kubelet
+        enabled: true
+        state: started
+      when: inventory_hostname in groups['workers']
+
+    - name: Inicia y habilita el servicio kube-proxy
+      ansible.builtin.service:
+        name: kube-proxy
+        enabled: true
+        state: started
+      when: inventory_hostname in groups['workers']
+
+    - name: Just force systemd to re-execute itself
+      ansible.builtin.systemd_service:
+        daemon_reexec: true
+      when: inventory_hostname in groups['workers']

@@ -1,0 +1,38 @@
+---
+- name: 18 Crea el fichero yaml para encriptar el almacen ETCD
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  # become: true
+
+  tasks:
+
+    - name: Borra los ficheros de la carpeta ssl si existen
+      ansible.builtin.file:
+        path: /home/ubuntu/encryption-config.yaml
+        state: absent
+
+    - name: Genera una contraseña desde random
+      ansible.builtin.shell:
+        cmd: set -o pipefail && head -c 32 /dev/urandom | base64
+        executable: /bin/bash
+      register: new_password
+      changed_when: "'error' not in new_password.stdout"
+
+    - name: Crea el fichero de config con la contraseña
+      ansible.builtin.copy:
+        dest: "/home/ubuntu/encryption-config.yaml"
+        mode: '0640'
+        owner: ubuntu
+        content: |
+          kind: EncryptionConfig
+          apiVersion: v1
+          resources:
+            - resources:
+                - secrets
+              providers:
+                - aescbc:
+                    keys:
+                      - name: key1
+                        secret: {{ new_password.stdout }}
+                - identity: {}

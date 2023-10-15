@@ -1,0 +1,71 @@
+---
+- name: 02 Crea el certificado de la CA raiz del cluster
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Crea un filtro de ficheros de la carpeta ssl si existe
+      ansible.builtin.find:
+        paths: /home/ubuntu/ssl/
+        patterns:
+          - '*.crt'
+          - '*.key'
+          - '*.pem'
+          - '*.csr'
+      register: files_to_delete
+
+    - name: Borra los ficheros de la carpeta ssl si existen
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      with_items: "{{ files_to_delete.files }}"
+
+    - name: Crea un directorio para los ficheros si no existe
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0700'
+
+    - name: Genera el fichero ca.key
+      ansible.builtin.shell:
+        cmd: openssl genrsa -out ./ssl/ca.key 2048
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.key
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/ca.key
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+
+    - name: Genera el ficheo ca.csr
+      ansible.builtin.shell:
+        cmd: openssl req -new -key ./ssl/ca.key -subj "/CN=KUBERNETES-CA/O=Kubernetes" -out ./ssl/ca.csr
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/ca.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero ca.crt
+      ansible.builtin.shell:
+        cmd: openssl x509 -req -in ./ssl/ca.csr -signkey ./ssl/ca.key -CAcreateserial  -out ./ssl/ca.crt -days 1000
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/ca.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

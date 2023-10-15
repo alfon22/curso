@@ -1,0 +1,40 @@
+---
+- name: 12 Descarga e instala kubectl
+  hosts: controlplanes
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Borra si existe el fichero a descargar
+      ansible.builtin.file:
+        path: /home/ubuntu/kubectl
+        state: absent
+
+    - name: Descarga kubectl desde google
+      ansible.builtin.uri:
+        url: 'https://dl.k8s.io/release/v1.28.2/bin/linux/amd64/kubectl'
+        dest: /home/ubuntu/kubectl
+        method: GET
+        # follow_redirects: safe
+      register: path
+
+    - name: Print return information from the previous task
+      ansible.builtin.debug:
+        msg: path
+
+    - name: Cambio propietario, grupo y permisos del fichero kubectl
+      ansible.builtin.file:
+        path: /home/ubuntu/kubectl
+        owner: root
+        group: root
+        mode: '0775'
+
+    - name: Mueve el fichero kubectl cambiando los permisos y el usuario
+      ansible.builtin.copy:
+        src: /home/ubuntu/kubectl
+        dest: /usr/local/bin/kubectl
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0775'

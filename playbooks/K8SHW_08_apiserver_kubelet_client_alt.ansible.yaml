@@ -1,0 +1,66 @@
+---
+- name: 08 Crea el certificado para el cliente de API
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Borra el fichero openssl-kubelet.cnf si existen
+      ansible.builtin.file:
+        path: /home/ubuntu/openssl-kubelet.cnf
+        state: absent
+
+    - name: Crea el fichero openssl-kubelet.cnf
+      ansible.builtin.copy:
+        dest: "/home/ubuntu/openssl-kubelet.cnf"
+        mode: '0640'
+        owner: ubuntu
+        content: |
+          [req]
+          req_extensions = v3_req
+          distinguished_name = req_distinguished_name
+          [req_distinguished_name]
+          [v3_req]
+          basicConstraints = critical, CA:FALSE
+          keyUsage = critical, nonRepudiation, digitalSignature, keyEncipherment
+          extendedKeyUsage = clientAuth
+
+    - name: Genera el fichero apiserver-kubelet-client.key
+      ansible.builtin.shell:
+        cmd: openssl genrsa -out ./ssl/apiserver-kubelet-client.key 2048
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero apiserver-kubelet-client.key
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.key
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero apiserver-kubelet-client.csr
+      ansible.builtin.shell:
+        cmd: openssl req -new -key ./ssl/apiserver-kubelet-client.key -subj "/CN=kube-apiserver-kubelet-client/O=system:masters" -out ./ssl/apiserver-kubelet-client.csr -config openssl-kubelet.cnf
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero apiserver-kubelet-client.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero apiserver-kubelet-client.crt
+      ansible.builtin.shell:
+        cmd: openssl x509 -req -in ./ssl/apiserver-kubelet-client.csr -CA ./ssl/ca.crt -CAkey ./ssl/ca.key -CAcreateserial  -out ./ssl/apiserver-kubelet-client.crt -extensions v3_req -extfile openssl-kubelet.cnf -days 1000
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

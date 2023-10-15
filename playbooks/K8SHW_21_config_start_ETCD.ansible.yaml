@@ -1,0 +1,122 @@
+---
+- name: 21 Configura y lanza el servicio de ETCD
+  hosts: controlplanes
+  remote_user: ubuntu
+  gather_facts: true
+  become: true
+
+  vars:
+    listaficheros1: "{{ 'etcd-server.key etcd-server.crt' | split }}"
+
+    master_1: "192.168.56.11"
+    master_2: "192.168.56.12"
+
+  tasks:
+
+    - name: Revisa que la carpeta destino no existe ya y la crea
+      ansible.builtin.file:
+        path: /etc/etcd
+        state: directory
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Revisa que la carpeta destino no existe ya y la crea
+      ansible.builtin.file:
+        path: /var/lib/etcd
+        state: directory
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Revisa que la carpeta destino no existe ya
+      ansible.builtin.file:
+        path: /var/lib/kubernetes/pki
+        state: directory
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Mueve la llave y el certificado a la carpeta indicada
+      ansible.builtin.copy:
+        src: "/home/ubuntu/ssl/{{ item }}"
+        dest: /etc/etcd/
+        owner: root
+        group: root
+        mode: '0600'
+        remote_src: true
+      with_items: "{{ listaficheros1 }}"
+
+    - name: Mueve el certificado a la carpeta indicada
+      ansible.builtin.copy:
+        src: "/home/ubuntu/ssl/ca.crt"
+        dest: /var/lib/kubernetes/pki/
+        owner: root
+        group: root
+        mode: '0600'
+        remote_src: true
+
+    - name: Create a symbolic link
+      ansible.builtin.file:
+        src: /var/lib/kubernetes/pki/ca.crt
+        dest: /etc/etcd/ca.crt
+        owner: root
+        group: root
+        state: link
+
+    - name: Extrae la ip en curso y la asigna a una variable
+      ansible.builtin.shell:
+        cmd: ip addr show enp0s8 | grep "inet " | awk '{print $2}' | cut -d / -f 1
+        # executable: /bin/bash
+      register: internal_ip
+
+    - name: Test hosts list
+      ansible.builtin.debug:
+        msg: "{{ internal_ip.stdout }}"
+
+
+    - name: Crea el fichero de config con la contraseña
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/etcd.service"
+        mode: '0640'
+        owner: root
+        content: |
+          [Unit]
+          Description=etcd
+          Documentation=https://github.com/coreos
+
+          [Service]
+          ExecStart=/usr/local/bin/etcd \
+          --name {{ inventory_hostname }} \
+          --cert-file=/etc/etcd/etcd-server.crt \
+          --key-file=/etc/etcd/etcd-server.key \
+          --peer-cert-file=/etc/etcd/etcd-server.crt \
+          --peer-key-file=/etc/etcd/etcd-server.key \
+          --trusted-ca-file=/etc/etcd/ca.crt \
+          --peer-trusted-ca-file=/etc/etcd/ca.crt \
+          --peer-client-cert-auth \
+          --client-cert-auth \
+          --initial-advertise-peer-urls https://{{ internal_ip.stdout }}:2380 \
+          --listen-peer-urls https://{{ internal_ip.stdout }}:2380 \
+          --listen-client-urls https://{{ internal_ip.stdout }}:2379,https://127.0.0.1:2379 \
+          --advertise-client-urls https://{{ internal_ip.stdout }}:2379 \
+          --initial-cluster-token etcd-cluster-0 \
+          --initial-cluster master-1=https://{{ master_1 }}:2380,master-2=https://{{ master_2 }}:2380 \
+          --initial-cluster-state new \
+          --data-dir=/var/lib/etcd
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+
+    - name: Start service httpd, if not started
+      ansible.builtin.service:
+        name: etcd
+        enabled: true
+        state: started
+
+    - name: Just force systemd to re-execute itself (2.8 and above)
+      ansible.builtin.systemd_service:
+        daemon_reexec: true

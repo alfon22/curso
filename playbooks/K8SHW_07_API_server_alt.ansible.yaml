@@ -1,0 +1,85 @@
+---
+- name: 07 Crea el certificado para el servidor de API
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+
+  vars:
+    api_service: "172.16.0.1"
+    master_1: "192.168.56.11"
+    master_2: "192.168.56.12"
+    loadbalancer: "192.168.56.30"
+
+  tasks:
+
+    - name: Borra el fichero openssl.cnf si existen
+      ansible.builtin.file:
+        path: /home/ubuntu/openssl.cnf
+        state: absent
+
+    - name: Crea el fichero openssl.cnf
+      ansible.builtin.copy:
+        dest: "/home/ubuntu/openssl.cnf"
+        mode: '0640'
+        owner: ubuntu
+        content: |
+          [req]
+          req_extensions = v3_req
+          distinguished_name = req_distinguished_name
+          [req_distinguished_name]
+          [v3_req]
+          basicConstraints = critical, CA:FALSE
+          keyUsage = critical, nonRepudiation, digitalSignature, keyEncipherment
+          extendedKeyUsage = serverAuth
+          subjectAltName = @alt_names
+          [alt_names]
+          DNS.1 = kubernetes
+          DNS.2 = kubernetes.default
+          DNS.3 = kubernetes.default.svc
+          DNS.4 = kubernetes.default.svc.cluster
+          DNS.5 = kubernetes.default.svc.cluster.local
+          IP.1 = {{ api_service }}
+          IP.2 = {{ master_1 }}
+          IP.3 = {{ master_2 }}
+          IP.4 = {{ loadbalancer }}
+          IP.5 = 127.0.0.1
+
+    - name: Genera el fichero kube-apiserver.key
+      ansible.builtin.shell:
+        cmd: openssl genrsa -out ./ssl/kube-apiserver.key 2048
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero kube-apiserver.key
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-apiserver.key
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero kube-apiserver.csr
+      ansible.builtin.shell:
+        cmd: openssl req -new -key ./ssl/kube-apiserver.key -subj "/CN=kube-apiserver/O=Kubernetes" -out ./ssl/kube-apiserver.csr -config openssl.cnf
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero kube-apiserver.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-apiserver.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera el fichero kube-apiserver.crt
+      ansible.builtin.shell:
+        cmd: openssl x509 -req -in ./ssl/kube-apiserver.csr -CA ./ssl/ca.crt -CAkey ./ssl/ca.key -CAcreateserial  -out ./ssl/kube-apiserver.crt -extensions v3_req -extfile openssl.cnf -days 1000
+        executable: /bin/bash
+      register: result
+      changed_when: "'error' not in result.stdout"
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-apiserver.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

@@ -1,0 +1,52 @@
+---
+- name: Crea el certificado para el cliente de API
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Genera una Key privada para clientes y servidores de 2048 bits con OpenSSL
+      community.crypto.openssl_privatekey:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.pem
+        size: 2048
+    - name: Cambio propietario, grupo y permisos del fichero apiserver-kubelet-client.pem
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.pem
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+    - name: Copy file with owner and permissions
+      ansible.builtin.copy:
+        src: /home/ubuntu/ssl/apiserver-kubelet-client.pem
+        dest: /home/ubuntu/ssl/apiserver-kubelet-client.key
+        remote_src: true
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera una solicitud de firma de certificado con OpenSSL
+      community.crypto.openssl_csr:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.csr
+        privatekey_path: /home/ubuntu/ssl/apiserver-kubelet-client.pem
+        subject: 'CN=kube-apiserver-kubelet-client, O=system:masters'
+    - name: Cambio propietario, grupo y permisos del fichero apiserver-kubelet-client.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera un certificado CRT con CA generada
+      community.crypto.x509_certificate:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.crt
+        csr_path: /home/ubuntu/ssl/apiserver-kubelet-client.csr
+        ownca_path: /home/ubuntu/ssl/ca.crt
+        ownca_privatekey_path: /home/ubuntu/ssl/ca.pem
+        provider: ownca
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/apiserver-kubelet-client.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

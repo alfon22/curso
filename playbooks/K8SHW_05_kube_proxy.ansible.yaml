@@ -1,0 +1,52 @@
+---
+- name: Crea el certificado para el kube_proxy
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Genera una Key privada para clientes y servidores de 2048 bits con OpenSSL
+      community.crypto.openssl_privatekey:
+        path: /home/ubuntu/ssl/kube-proxy.pem
+        size: 2048
+    - name: Cambio propietario, grupo y permisos del fichero kube-proxy.pem
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-proxy.pem
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+    - name: Copy file with owner and permissions
+      ansible.builtin.copy:
+        src: /home/ubuntu/ssl/kube-proxy.pem
+        dest: /home/ubuntu/ssl/kube-proxy.key
+        remote_src: true
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera una solicitud de firma de certificado con OpenSSL
+      community.crypto.openssl_csr:
+        path: /home/ubuntu/ssl/kube-proxy.csr
+        privatekey_path: /home/ubuntu/ssl/kube-proxy.pem
+        subject: 'CN=system:kube-proxy, O=system:node-proxier'
+    - name: Cambio propietario, grupo y permisos del fichero kube-proxy.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-proxy.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera un certificado CRT con CA generada
+      community.crypto.x509_certificate:
+        path: /home/ubuntu/ssl/kube-proxy.crt
+        csr_path: /home/ubuntu/ssl/kube-proxy.csr
+        ownca_path: /home/ubuntu/ssl/ca.crt
+        ownca_privatekey_path: /home/ubuntu/ssl/ca.pem
+        provider: ownca
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/kube-proxy.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

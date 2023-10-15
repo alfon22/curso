@@ -1,0 +1,53 @@
+---
+- name: Crea el certificado para el servicio de ETC
+  hosts: all
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+  tasks:
+
+    - name: Genera una Key privada para clientes y servidores de 2048 bits con OpenSSL
+      community.crypto.openssl_privatekey:
+        path: /home/ubuntu/ssl/etcd-server.pem
+        size: 2048
+    - name: Cambio propietario, grupo y permisos del fichero etcd-server.pem
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/etcd-server.pem
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+    - name: Copy file with owner and permissions
+      ansible.builtin.copy:
+        src: /home/ubuntu/ssl/etcd-server.pem
+        dest: /home/ubuntu/ssl/etcd-server.key
+        remote_src: true
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera una solicitud de firma de certificado con OpenSSL
+      community.crypto.openssl_csr:
+        path: /home/ubuntu/ssl/etcd-server.csr
+        privatekey_path: /home/ubuntu/ssl/etcd-server.pem
+        subject: 'CN=etcd-server, O=Kubernetes'
+        subject_alt_name: "IP:192.168.56.11,IP:192.168.56.12,IP:127.0.0.1"
+    - name: Cambio propietario, grupo y permisos del fichero etcd-server.csr
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/etcd-server.csr
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Genera un certificado CRT con CA generada
+      community.crypto.x509_certificate:
+        path: /home/ubuntu/ssl/etcd-server.crt
+        csr_path: /home/ubuntu/ssl/etcd-server.csr
+        ownca_path: /home/ubuntu/ssl/ca.crt
+        ownca_privatekey_path: /home/ubuntu/ssl/ca.pem
+        provider: ownca
+    - name: Cambio propietario, grupo y permisos del fichero ca.crt
+      ansible.builtin.file:
+        path: /home/ubuntu/ssl/etcd-server.crt
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'

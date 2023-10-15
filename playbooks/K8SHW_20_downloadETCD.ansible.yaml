@@ -1,0 +1,51 @@
+---
+- name: 20 Descarga el software de ETCD
+  hosts: controlplanes
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+
+  vars:
+    google_url: https://storage.googleapis.com/etcd
+    github_url: https://github.com/etcd-io/etcd/releases/download
+    download_url: '{{github_url}}'
+    etcd_ver: v3.4.27
+    listaficheros1: "{{ 'etcdctl etcd' | split }}"
+
+  tasks:
+
+    - name: Revisa que el fichero destino no existe ya
+      ansible.builtin.file:
+        path: /home/ubuntu/etcd-{{ etcd_ver }}-linux-amd64.tar.gz
+        state: absent
+
+    - name: Revisa que la carpeta destino no existe ya
+      ansible.builtin.file:
+        path: /home/ubuntu/etcd-{{ etcd_ver }}-linux-amd64
+        state: absent
+
+
+    - name: Descarga el paquete de ETCD
+      ansible.builtin.uri:
+        url: '{{ download_url }}/{{ etcd_ver }}/etcd-{{ etcd_ver }}-linux-amd64.tar.gz'
+        method: GET
+        dest: /home/ubuntu/etcd-{{ etcd_ver }}-linux-amd64.tar.gz
+        follow_redirects: safe
+      register: result
+
+    - name: Descomprime el fichero y lo deja en la carpeta destino
+      ansible.builtin.unarchive:
+        src: /home/ubuntu/etcd-{{ etcd_ver }}-linux-amd64.tar.gz
+        dest: /home/ubuntu/
+        creates: /home/ubuntu/etcd-{{ etcd_ver }}-linux-amd64
+        remote_src: true
+
+    - name: Mueve los ejecutables a la carpeta en el path
+      ansible.builtin.copy:
+        src: "/home/ubuntu/etcd-{{ etcd_ver }}-linux-amd64/{{ item }}"
+        dest: /usr/local/bin/
+        owner: root
+        group: root
+        mode: '0754'
+        remote_src: true
+      with_items: "{{ listaficheros1 }}"

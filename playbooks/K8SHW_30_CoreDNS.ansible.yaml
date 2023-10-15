@@ -1,0 +1,29 @@
+---
+- name: 30 Descarga instala y configura CoreDNS
+  hosts: master-1
+  remote_user: ubuntu
+  gather_facts: false
+  become: true
+
+  tasks:
+
+    - name: Descarga el paquete de ETCD
+      ansible.builtin.uri:
+        url: 'https://raw.githubusercontent.com/mmumshad/kubernetes-the-hard-way/master/deployments/coredns.yaml'
+        method: GET
+        dest: /home/ubuntu/coredns.yaml
+        follow_redirects: safe
+      register: result
+
+    - name: Sustituye una linea en el fichero yaml descargado
+      ansible.builtin.lineinfile:
+        path: /home/ubuntu/coredns.yaml
+        regexp: 'clusterIP:'
+        line: "  clusterIP: 172.16.0.10"
+
+    - name: Aplica con Kubectl el fichero de Rol ClusterRole.yaml
+      ansible.builtin.command:
+        cmd: "kubectl apply --kubeconfig admin.kubeconfig -f coredns.yaml"
+      register: result
+      changed_when: "'error' not in result.stdout"
+      when: inventory_hostname == "master-1"
